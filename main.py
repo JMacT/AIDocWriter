@@ -1,19 +1,14 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, send_from_directory, url_for
 import openai
 import requests
+import os
 import mimetypes
 import textract
-
-
+from werkzeug.utils import redirect
 
 app = Flask(__name__)
 app.debug == True
 api_key = openai.api_key = "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"
-
-@app.route("/chat")
-def index():
-    return render_template("chat.html")
-
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -43,9 +38,13 @@ def upload():
         rewritten_text = "\n".join(rewritten_paragraphs)
         with open("output_document.txt", "w") as f:
             f.write(rewritten_text)
-    return redirect(url_for('download', filename='output_document.txt'))
-
-
+        return redirect(url_for('download', filename='output_document.txt'))
+    return """
+    <form method="post" enctype="multipart/form-data">
+        <input type="file" name="file">
+        <input type="submit" value="Upload">
+    </form>
+    """
 
 @app.route("/download/<filename>")
 def download(filename):
