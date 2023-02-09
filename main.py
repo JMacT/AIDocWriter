@@ -1,10 +1,25 @@
+import concurrent
 from typing import io
-
+import threading
+import re
 from flask import Flask, request, render_template
 import openai
 import pandas as pd
 
 app = Flask(__name__)
+
+def rewrite_sentence(sentence, api_key):
+    openai.api_key = api_key
+    response = openai.Completion.create(
+        engine="text-davinci-002",
+        prompt="Rewrite this sentence: " + sentence,
+        max_tokens=2000,
+        n=1,
+        stop=None,
+        temperature=0.5,
+    )
+    rewritten_sentence = response["choices"][0]["text"]
+    return rewritten_sentence
 
 def read_file(filename):
     # Check the file extension
@@ -22,6 +37,11 @@ def read_file(filename):
 
     return data
 
+
+def split_text_into_sentences(file_contents):
+    pass
+
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
@@ -36,17 +56,22 @@ def index():
 
         openai.api_key = "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"
 
-        response = openai.Completion.create(
-            engine="text-davinci-002",
-            prompt="Rewrite this a-player agreement for a design engineer: " + file_contents,
-            max_tokens=2000,
-            n=1,
-            stop=None,
-            temperature=0.5,
-        )
+        sentences = file_contents.split(".")
+        rewritten_sentences = []
 
-        rewritten_text = response["choices"][0]["text"]
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future_to_sentence = {executor.submit(rewrite_sentence, sentence, openai.api_key): sentence for sentence in
+                                  sentences}
+            for future in concurrent.futures.as_completed(future_to_sentence):
+                sentence = future_to_sentence[future]
+                try:
+                    rewritten_sentence = future.result()
+                except Exception as e:
+                    return "Error rewriting sentence: " + str(e)
+                else:
+                    rewritten_sentences.append(rewritten_sentence)
 
+        rewritten_text = ' '.join(rewritten_sentences)
         return render_template("rewritten_document.html", content=rewritten_text)
 
     return render_template("index.html")
