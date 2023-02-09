@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, send_from_directory, url_for
 import openai
 import requests
 import os
+import concurrent.futures
 import mimetypes
 import textract
 from werkzeug.utils import redirect
@@ -14,13 +15,13 @@ def index():
     return render_template("index.html")
 
 @app.route("/upload", methods=["GET", "POST"])
-def upload():
+def upload(rewritten_paragraphs=None):
     if request.method == "POST":
         file = request.files["file"]
         contents = file.read().decode("utf-8")
         paragraphs = contents.split("\n")
-        rewritten_paragraphs = []
-        for paragraph in paragraphs:
+
+        def rewrite_paragraph(paragraph):
             prompt = f"Rewrite the following paragraph with a new purpose:\n{paragraph}"
             response = requests.post(
                 "https://api.openai.com/v1/engines/davinci/completions",
@@ -32,9 +33,16 @@ def upload():
                     "prompt": prompt,
                     "temperature": 0.5,
                     "max_tokens": 1024,
+                    "stream":True
                 }
             ).json()
-            rewritten_paragraphs.append(response["choices"][0]["text"])
+            return response["choices"][0]["text"]
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future_to_paragraph = {executor.submit(rewrite_paragraph, paragraph): paragraph for paragraph in paragraphs}
+            for future in concurrent.futures.as_completed(future_to_paragraph):
+                rewritten_paragraph = future.result()
+                rewritten_paragraphs.append(rewritten_paragraph)
         rewritten_text = "\n".join(rewritten_paragraphs)
         with open("output_document.txt", "w") as f:
             f.write(rewritten_text)
@@ -60,6 +68,7 @@ def response():
         n=1,
         stop=None,
         temperature=0.5,
+        stream=True
     )
     response = completions.choices[0].text
     return render_template("response.html", response=response)
